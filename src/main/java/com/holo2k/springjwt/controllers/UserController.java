@@ -3,6 +3,7 @@ package com.holo2k.springjwt.controllers;
 import com.holo2k.springjwt.models.ERole;
 import com.holo2k.springjwt.models.Role;
 import com.holo2k.springjwt.models.User;
+import com.holo2k.springjwt.payload.request.PasswordRequest;
 import com.holo2k.springjwt.payload.request.SignupRequest;
 import com.holo2k.springjwt.payload.response.MessageResponse;
 import com.holo2k.springjwt.repository.RoleRepository;
@@ -14,12 +15,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mail.MailException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCrypt;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import javax.mail.MessagingException;
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 import java.io.FileNotFoundException;
 import java.util.HashSet;
@@ -33,6 +39,9 @@ import java.util.Set;
 public class UserController {
     @Autowired
     AuthenticationManager authenticationManager;
+
+//    @Autowired
+//    UserService userService;
 
     @Autowired
     UserRepository userRepository;
@@ -83,12 +92,34 @@ public class UserController {
         }).orElseGet(() -> new ResponseEntity<>(HttpStatus.NOT_FOUND));
     }
 
-//    @PutMapping("/user/change-password/{id}")
-//    @PreAuthorize("hasRole('USER') or hasRole('MODERATOR') or hasRole('ADMIN')  " )
-//    public ResponseEntity<?> changePasswordUser(@PathVariable("id") Long id, @RequestBody String password, @RequestBody String newPassword){
-//        Optional<User> userOptional = userRepository.findById(id);
-//        if(encoder.matches(password, userRepository.))
-//    }
+    @PutMapping("/user/change-password/{id}")
+    @PreAuthorize("hasRole('USER') or hasRole('MODERATOR') or hasRole('ADMIN')  ")
+    public ResponseEntity<?> changePassword(@PathVariable("id") Long id, @RequestBody String password) {
+        User usersChange = userRepository.findById(id).orElse(null);
+        if (usersChange == null) {
+            throw new UsernameNotFoundException("User not found");
+        } else {
+            usersChange.setPassword(BCrypt.hashpw(password, BCrypt.gensalt(12)));
+            return new ResponseEntity<>(userRepository.save(usersChange), HttpStatus.OK);
+        }
+    }
+
+    @PostMapping("/user/check-password/{id}")
+    @PreAuthorize("hasRole('USER') or hasRole('MODERATOR') or hasRole('ADMIN')  ")
+    public ResponseEntity<Boolean> checkPassword(@PathVariable("id") Long id, @RequestBody String password) {
+        System.out.println(id +" " +password);
+        User users = userRepository.findById(id).orElse(null);
+        if (users == null) {
+            throw new UsernameNotFoundException("User not found");
+        } else {
+            System.out.println(users.getPassword());
+            BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+            String comparePassword = users.getPassword();
+            System.out.println(passwordEncoder.matches(password, comparePassword));
+            return new ResponseEntity<Boolean>(passwordEncoder.matches(password, comparePassword), HttpStatus.OK);
+        }
+    }
+
 
     @GetMapping("/mod")
     @PreAuthorize("hasRole('MODERATOR')")
@@ -96,6 +127,7 @@ public class UserController {
         return "Moderator Board.";
     }
 
+    //Board Admin
     @GetMapping("/admin")
     @PreAuthorize("hasRole('ADMIN')")
     public List<User> adminAccess() {
@@ -197,7 +229,6 @@ public class UserController {
 //
 //        return new ResponseEntity<>("Please check your inbox", HttpStatus.OK);
 //    }
-
 
     @GetMapping(value = "/simple-order-email/{user-email}")
     public @ResponseBody

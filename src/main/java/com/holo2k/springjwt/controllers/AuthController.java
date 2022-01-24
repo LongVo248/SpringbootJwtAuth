@@ -1,5 +1,6 @@
 package com.holo2k.springjwt.controllers;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -13,6 +14,8 @@ import com.holo2k.springjwt.repository.RoleRepository;
 import com.holo2k.springjwt.repository.UserRepository;
 import com.holo2k.springjwt.security.jwt.JwtUtils;
 import com.holo2k.springjwt.security.services.UserDetailsImpl;
+import com.holo2k.springjwt.security.services.UserServiceImpl;
+import com.holo2k.springjwt.util.DataUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,12 +26,9 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import com.holo2k.springjwt.models.ERole;
 import com.holo2k.springjwt.models.Role;
@@ -43,6 +43,8 @@ import com.holo2k.springjwt.payload.response.MessageResponse;
 public class AuthController {
     @Autowired
     AuthenticationManager authenticationManager;
+
+    private UserServiceImpl userService;
 
     @Autowired
     UserRepository userRepository;
@@ -146,5 +148,40 @@ public class AuthController {
             return new ResponseEntity<>("Unable to send email", HttpStatus.INTERNAL_SERVER_ERROR);
         }
         return ResponseEntity.ok(new MessageResponse("User registered successfully! Please check your inbox !!!"));
+    }
+
+    @PostMapping("/confirmEmail")
+    public ResponseEntity<?> forgetPasswordUser(@Valid @RequestBody String email) {
+        email= email.substring(10,email.length()-2);
+//        System.out.println(email);
+        if(userRepository.existsByEmail(email)){
+            for (User users : new ArrayList<>(userRepository.findAll())) {
+                if (email.equals(users.getEmail())) {
+                    users.setPassword(DataUtils.generateTempPwd(8));
+                    String newPassword= users.getPassword();
+                    users.setPassword(BCrypt.hashpw(users.getPassword(), BCrypt.gensalt(12)));
+                    userRepository.save(users);
+                    try {
+
+                        emailService.sendSimpleEmail(email, "Hello \n" +
+                                "Complete reset password!!!", "Hello "+ "!!\n" + "New password: "+ newPassword+"\n"+
+                                "Welcome to Website!\n");
+                    } catch (MailException mailException) {
+                        LOG.error("Error while sending out email..{}", mailException.getStackTrace());
+                        LOG.error("Error while sending out email..{}", mailException.fillInStackTrace());
+                        return new ResponseEntity<>("Unable to send email", HttpStatus.INTERNAL_SERVER_ERROR);
+                    }
+                    return ResponseEntity.ok(new MessageResponse("User registered successfully! Please check your inbox !!!"));
+                }
+            }
+
+        } else {
+            return ResponseEntity
+                    .badRequest()
+                    .body(new MessageResponse("Error: Email no exist!"));
+        }
+        return ResponseEntity
+                .badRequest()
+                .body(new MessageResponse("Error: Email no exist!"));
     }
 }
